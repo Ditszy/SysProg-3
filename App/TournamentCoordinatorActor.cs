@@ -12,31 +12,33 @@ public class TournamentCoordinatorActor : ReceiveActor
     {
         Receive<GetCurrentStateRequest>(request =>
         {
-            var actorName = request.Category.ToLower();
+            var actorName = BuildKey(request.Category, request.Country, request.Format);
 
             var child = Context.Child(actorName);
             if (child is Nobody)
             {
                 child = Context.ActorOf(
-                    TournamentManagerActor.Props(request.Category)
+                    TournamentManagerActor.Props(request.Category, request.Country, request.Format)
                         .WithDispatcher("akka.actor.tournament-dispatcher"),
                     actorName
                 );
 
-                _log.Info($"Child aktor kreiran za kategoriju: {request.Category}");
+                _log.Info($"Child aktor kreiran: {actorName}");
 
-                child.Tell(new StartPeriodicFetch(request.Category, TimeSpan.FromSeconds(60)));
-
-                _log.Info($"StartPeriodicFetch izvrsen za: {request.Category}");
+                child.Tell(new StartPeriodicFetch(request.Category, request.Country, request.Format, TimeSpan.FromSeconds(60)));
 
                 child.Forward(request);
-                _log.Info($"Forward uspesan za: {request.Category}");
             }
             else
             {
                 child.Forward(request);
             }
         });
+    }
+
+    private static string BuildKey(string category, string? country, string? format)
+    {
+        return $"{category}_{country ?? "any"}_{format ?? "any"}".ToLowerInvariant();
     }
 
     public static Props Props() => Akka.Actor.Props.Create<TournamentCoordinatorActor>();

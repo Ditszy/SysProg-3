@@ -11,6 +11,8 @@ public class TournamentManagerActor : ReceiveActor
     private readonly TournamentService _tournamentService = new(new HttpClient { Timeout = TimeSpan.FromSeconds(60) });
 
     private readonly string _currentCategory;
+    private readonly string? _currentCountry;
+    private readonly string? _currentFormat;
     private List<TournamentDto> _cachedUpcoming = new();
     private List<TournamentDto> _cachedActive = new();
     private List<TournamentDto> _cachedFinished = new();
@@ -22,10 +24,12 @@ public class TournamentManagerActor : ReceiveActor
     private IDisposable? _rxSubscription;
 
     private readonly List<IActorRef> _waitingHttpRequesters = new();
-    public TournamentManagerActor(string category)
+    public TournamentManagerActor(string category, string? country, string? format)
     {
         _currentCategory = category;
-        _log.Info($"Konstruktor TournamentManagerActor: {category}");
+        _currentCountry = country;
+        _currentFormat = format;
+        _log.Info($"Konstruktor TournamentManagerActor: {category} | country={country ?? "any"} | format={format ?? "any"}");
 
         Receive<StartPeriodicFetch>(start =>
         {
@@ -35,11 +39,10 @@ public class TournamentManagerActor : ReceiveActor
 
             var self = Self;
 
-            _rxSubscription = _tournamentService.WatchTournaments(_currentCategory, start.Interval)
+            _rxSubscription = _tournamentService.WatchTournaments(_currentCategory, _currentCountry, _currentFormat, start.Interval)
                    .Subscribe(
                         tournaments =>
                         {
-                            _log.Info($"[RX NIT] {Thread.CurrentThread.ManagedThreadId}");
                             self.Tell(new TournamentsFetched(tournaments));
                         },
                         error =>
@@ -53,7 +56,6 @@ public class TournamentManagerActor : ReceiveActor
         {
             if (_isDataInitialized)
             {
-                _log.Info($"[AKKA DISPATCHER NIT - HTTP] {Thread.CurrentThread.ManagedThreadId}");
                 Sender.Tell(BuildResult());
                 return;
             }
@@ -63,12 +65,12 @@ public class TournamentManagerActor : ReceiveActor
 
         Receive<TournamentsFetched>(msg =>
         {
-            _log.Info($"[AKKA DISPATCHER NIT - PROCES] {Thread.CurrentThread.ManagedThreadId}");
-
             var tournaments = msg.Tournaments
                 .Where(t => string.Equals(t.Category, _currentCategory, StringComparison.OrdinalIgnoreCase))
+                .Where(t => _currentCountry == null || string.Equals(t.CountryCode, _currentCountry, StringComparison.OrdinalIgnoreCase))
+                .Where(t => _currentFormat == null || string.Equals(t.Format, _currentFormat, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            _log.Info($"Broj turnira za kategoriju '{_currentCategory}': {tournaments.Count} (od ukupno {msg.Tournaments.Count}).");
+            _log.Info($"Broj turnira za '{_currentCategory}/{_currentCountry ?? "any"}/{_currentFormat ?? "any"}': {tournaments.Count} (od ukupno {msg.Tournaments.Count}).");
 
             var task = Task.Run(() =>
             {
@@ -155,6 +157,13 @@ public class TournamentManagerActor : ReceiveActor
         });
     }
 
+    protected override void PostStop()
+    {
+        _log.Info($"PostStop: Dispose Rx subscription za '{_currentCategory}'.");
+        _rxSubscription?.Dispose();
+        base.PostStop();
+    }
+
     private GroupedTournaments BuildResult() => new(
         _currentCategory,
         _cachedUpcoming,
@@ -167,7 +176,7 @@ public class TournamentManagerActor : ReceiveActor
     public record TournamentsFetched(List<RawTournament> Tournaments);
     public record ProcessedResultReady(GroupedTournaments Result);
 
-    public static Props Props(string category)
-        => Akka.Actor.Props.Create(() => new TournamentManagerActor(category))
+    public static Props Props(string category, string? country, string? format)
+        => Akka.Actor.Props.Create(() => new TournamentManagerActor(category, country, format))
             .WithDispatcher("akka.actor.tournament-dispatcher");
 }

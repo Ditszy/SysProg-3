@@ -93,8 +93,12 @@ public class Server
 
             try
             {
+                var query = request.QueryString;
+                var country = query["country"];
+                var format = query["format"];
+
                 var result = await _tournamentCoordinator.Ask<GroupedTournaments>(
-                    new GetCurrentStateRequest(category),
+                    new GetCurrentStateRequest(category, country, format),
                     TimeSpan.FromSeconds(30)
                 );
 
@@ -104,7 +108,7 @@ public class Server
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
 
-                Logger.Log("HTTP", $"Zahtev '{category}' uspesno obradjen (turnira: {result.TotalCount}).");
+                Logger.Log("HTTP", $"Zahtev '{category}' (country={country ?? "any"}, format={format ?? "any"}) uspesno obradjen (turnira: {result.TotalCount}).");
             }
             catch (TimeoutException)
             {
