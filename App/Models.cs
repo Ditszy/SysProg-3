@@ -27,3 +27,4 @@ public record GroupedTournaments(string Category, List<TournamentDto> Upcoming, 
 public record StartPeriodicFetch(string Category, string? Country, string? Format, TimeSpan Interval);
 public record GetCurrentStateRequest(string Category, string? Country, string? Format);
 public record ProcessingFailed(Exception Exception);
+public record StopTournamentActor;

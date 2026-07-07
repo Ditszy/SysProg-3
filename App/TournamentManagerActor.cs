@@ -8,7 +8,7 @@ namespace EsportTournamentsApp.Actors;
 public class TournamentManagerActor : ReceiveActor
 {
     private readonly ILoggingAdapter _log = Context.GetLogger();
-    private readonly TournamentService _tournamentService = new(new HttpClient { Timeout = TimeSpan.FromSeconds(60) });
+    private readonly TournamentService _tournamentService = new(new HttpClient { Timeout = TimeSpan.FromSeconds(30) });
 
     private readonly string _currentCategory;
     private readonly string? _currentCountry;
@@ -146,7 +146,7 @@ public class TournamentManagerActor : ReceiveActor
             _lastUpdated = msg.Result.LastUpdated;
             _isDataInitialized = true;
 
-            _log.Info($"Azuriran kes kategorije '{_currentCategory}': {_totalCount} turnira. Odgovaram {_waitingHttpRequesters.Count} cekalaca.");
+            _log.Info($"Azuriran kes kategorije '{_currentCategory}': {_totalCount} turnira. Odgovaram na {_waitingHttpRequesters.Count} cekalaca.");
 
             var result = BuildResult();
 
@@ -154,6 +154,13 @@ public class TournamentManagerActor : ReceiveActor
                 requester.Tell(result);
 
             _waitingHttpRequesters.Clear();
+        });
+
+        Receive<StopTournamentActor>(_ =>
+        {
+            _log.Info($"StopTournamentActor primljen za '{_currentCategory}/{_currentCountry ?? "any"}/{_currentFormat ?? "any"}' - gasim se.");
+            _rxSubscription?.Dispose();
+            Context.Stop(Self);
         });
     }
 
